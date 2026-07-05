@@ -1,0 +1,29 @@
+---
+- name: Render templates for CI validation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  vars:
+    vm_base_dir: /tmp/vm-rendered
+    vm_pool_dir: /tmp/vm-rendered/pool
+    vm_tf_dir: /tmp/vm-rendered
+  tasks:
+    - name: Create output directory
+      ansible.builtin.file:
+        path: /tmp/vm-rendered
+        state: directory
+        mode: "0755"
+
+    - name: Render infra.tf
+      ansible.builtin.template:
+        src: templates/infra.tf.j2
+        dest: /tmp/vm-rendered/infra.tf
+        mode: "0644"
+
+    - name: Render vm.tf
+      ansible.builtin.template:
+        src: templates/vm.tf.j2
+        dest: /tmp/vm-rendered/{{ vm_prefix }}_vm0.tf
+        mode: "0644"

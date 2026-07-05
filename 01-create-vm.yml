@@ -1,0 +1,194 @@
+---
+- name: Fedora VM - Host SELinux preparation
+  hosts: localhost
+  gather_facts: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Ensure policycoreutils-python-utils is installed (provides semanage)
+      ansible.builtin.dnf:
+        name: policycoreutils-python-utils
+        state: present
+      become: true
+      when:
+        - ansible_facts['selinux'].status == 'enabled'
+        - ansible_facts['os_family'] == 'RedHat'
+
+    - name: Ensure libvirt directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ vm_pool_dir }}"
+        - "{{ vm_tf_dir }}"
+
+    - name: Set SELinux virt_image_t context for libvirt directories
+      ansible.builtin.command:
+        cmd: semanage fcontext -a -t virt_image_t "{{ item }}(/.*)?"
+      become: true
+      loop:
+        - "{{ vm_pool_dir }}"
+        - "{{ vm_tf_dir }}"
+      register: semanage_result
+      changed_when: semanage_result.rc == 0
+      failed_when: semanage_result.rc != 0 and 'already defined' not in semanage_result.stderr
+      when: ansible_facts['selinux'].status == 'enabled'
+
+    - name: Apply SELinux contexts to libvirt directories
+      ansible.builtin.command:
+        cmd: restorecon -Rv "{{ item }}"
+      become: true
+      loop:
+        - "{{ vm_pool_dir }}"
+        - "{{ vm_tf_dir }}"
+      register: restorecon_result
+      changed_when: restorecon_result.stdout != ''
+      when: ansible_facts['selinux'].status == 'enabled'
+
+- name: Fedora VM - infrastructure + VM
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Generate OpenTofu manifests
+      ansible.builtin.template:
+        src: "templates/{{ item.src }}"
+        dest: "{{ vm_tf_dir }}/{{ item.dest }}"
+        mode: '0644'
+      loop:
+        - {src: infra.tf.j2, dest: "infra.tf"}
+        - {src: vm.tf.j2, dest: "{{ vm_prefix }}_vm0.tf"}
+
+    - name: OpenTofu init + apply (pool, network, VM)
+      ansible.builtin.shell: tofu init && tofu apply -auto-approve
+      args:
+        chdir: "{{ vm_tf_dir }}"
+      register: tf_apply
+      changed_when: "'Apply complete!' in tf_apply.stdout"
+
+    - name: Get VM IP from libvirt
+      ansible.builtin.command:
+        cmd: virsh -c qemu:///system domifaddr {{ vm_prefix }}_vm0
+      register: domifaddr_out
+      changed_when: false
+      retries: 15
+      delay: 10
+      until: "'ipv4' in domifaddr_out.stdout"
+
+    - name: Set VM IP fact
+      ansible.builtin.set_fact:
+        vm_ip: "{{ domifaddr_out.stdout | regex_search('ipv4\\s+(\\S+)', '\\1') | first | split('/') | first }}"
+
+    - name: Wait for VM SSH
+      ansible.builtin.wait_for:
+        host: "{{ vm_ip }}"
+        port: 22
+        timeout: 300
+
+    - name: Generate login script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          sshpass -p {{ vm_password }} ssh {{ vm_user }}@{{ vm_ip }} \
+            -o LogLevel=ERROR -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$@"
+        dest: "{{ vm_tf_dir }}/{{ vm_prefix }}_login.sh"
+        mode: '0755'
+
+    - name: Add VM to dynamic inventory
+      ansible.builtin.add_host:
+        name: vm_server
+        ansible_host: "{{ vm_ip }}"
+        ansible_user: "{{ vm_user }}"
+        ansible_password: "{{ vm_password }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+    - name: Display VM access info
+      ansible.builtin.debug:
+        msg: |
+          VM created: {{ vm_prefix }}_vm0
+          IP: {{ vm_ip }}
+          Login: {{ vm_tf_dir }}/{{ vm_prefix }}_login.sh
+          Or: sshpass -p {{ vm_password }} ssh {{ vm_user }}@{{ vm_ip }}
+
+- name: Fedora VM - wait for cloud-init and verify kdump
+  hosts: vm_server
+  gather_facts: false
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Wait for SSH to become available
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Wait for cloud-init phase 1 (packages + runcmd before reboot)
+      ansible.builtin.wait_for:
+        path: /var/lib/cloud/instance/boot-finished-phase1
+        timeout: 900
+      when: vm_kdump_enabled | bool
+
+    - name: Wait for cloud-init reboot to complete
+      ansible.builtin.wait_for_connection:
+        delay: 30
+        timeout: 600
+      when: vm_kdump_enabled | bool
+
+    - name: Wait for cloud-init to fully finish
+      ansible.builtin.command:
+        cmd: cloud-init status --wait
+      register: cloud_init_status
+      changed_when: false
+      failed_when: cloud_init_status.rc not in [0, 2]
+      timeout: 300
+
+    - name: Verify kdump is operational
+      ansible.builtin.command:
+        cmd: kdumpctl status
+      become: true
+      register: kdump_status
+      changed_when: false
+      failed_when: "'Kdump is operational' not in kdump_status.stdout"
+      when: vm_kdump_enabled | bool
+
+    - name: Check crashkernel reservation
+      ansible.builtin.command:
+        cmd: cat /proc/cmdline
+      register: cmdline
+      changed_when: false
+      when: vm_kdump_enabled | bool
+
+    - name: Verify crashkernel is in cmdline
+      ansible.builtin.assert:
+        that:
+          - "'crashkernel={{ vm_crashkernel }}' in cmdline.stdout"
+        fail_msg: "crashkernel={{ vm_crashkernel }} not found in /proc/cmdline"
+      when: vm_kdump_enabled | bool
+
+    - name: Get kernel version
+      ansible.builtin.command:
+        cmd: uname -r
+      register: kernel_version
+      changed_when: false
+
+    - name: Check vmlinux exists
+      ansible.builtin.stat:
+        path: "/usr/lib/debug/lib/modules/{{ kernel_version.stdout }}/vmlinux"
+      register: vmlinux_stat
+      when: vm_install_debuginfo | bool
+
+    - name: Display VM readiness summary
+      ansible.builtin.debug:
+        msg: |
+          === Fedora VM Ready ===
+          Kernel: {{ kernel_version.stdout }}
+          kdump: {{ 'operational' if (vm_kdump_enabled | bool) else 'disabled' }}
+          crashkernel: {{ vm_crashkernel if (vm_kdump_enabled | bool) else 'n/a' }}
+          vmlinux: {{ '/usr/lib/debug/lib/modules/' + kernel_version.stdout + '/vmlinux' if (vm_install_debuginfo | bool and vmlinux_stat.stat.exists) else 'not installed' }}
+          ===
+          To capture a vmcore:
+            echo c | sudo tee /proc/sysrq-trigger
+          vmcore will be at: /var/crash/<timestamp>/vmcore

@@ -1,0 +1,68 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  syntax-check:
+    name: Syntax check / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Fedora 43
+            image: fedora:43
+            install: dnf install -y ansible-core git
+          - name: Fedora 44
+            image: fedora:44
+            install: dnf install -y ansible-core git
+          - name: Ubuntu 24.04
+            image: ubuntu:24.04
+            install: apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core git
+          - name: CentOS Stream 10
+            image: quay.io/centos/centos:stream10
+            install: dnf install -y ansible-core git
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install ansible-core
+        run: ${{ matrix.install }}
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Run syntax check
+        run: |
+          for pb in 01-create-vm.yml 99-destroy-all.yml; do
+            ansible-playbook --syntax-check -i test/inventory "$pb"
+          done
+
+  validate-templates:
+    name: Template render + tofu validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Install ansible-core
+        run: pip install ansible-core
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Render templates
+        run: ansible-playbook test-render.yml
+
+      - name: tofu init
+        run: tofu -chdir=/tmp/vm-rendered init
+
+      - name: tofu validate
+        run: tofu -chdir=/tmp/vm-rendered validate

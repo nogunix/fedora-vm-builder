@@ -1,0 +1,106 @@
+name: Fedora Image Check
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # every Monday at 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check Fedora Cloud image URLs
+        id: urls
+        run: |
+          FAILED=()
+          CHECKED=()
+          while IFS= read -r URL; do
+            STATUS=$(curl -sSo /dev/null -w "%{http_code}" --head --max-time 30 "${URL}")
+            echo "${STATUS} ${URL}"
+            CHECKED+=("${STATUS} ${URL}")
+            if [[ "${STATUS}" != "200" && "${STATUS}" != "302" ]]; then
+              FAILED+=("${URL} (HTTP ${STATUS})")
+            fi
+          done <<'URLS'
+          https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2
+          https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2
+          https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-42-1.1.x86_64.qcow2
+          https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-41-1.4.x86_64.qcow2
+          https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2
+          URLS
+
+          printf '%s\n' "${CHECKED[@]}" > /tmp/checked_urls.txt
+
+          if [[ ${#FAILED[@]} -gt 0 ]]; then
+            printf '%s\n' "${FAILED[@]}" > /tmp/failed_urls.txt
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run ansible-lint
+        id: lint
+        uses: ansible/ansible-lint@v25
+        continue-on-error: true
+
+      - name: Open issue on failure
+        if: steps.urls.outputs.failed == 'true' || steps.lint.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const urlFailed = '${{ steps.urls.outputs.failed }}' === 'true';
+            const lintFailed = '${{ steps.lint.outcome }}' === 'failure';
+
+            const lines = [
+              `## Fedora Image Check Failed`,
+              ``,
+              `**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+              ``,
+            ];
+
+            if (urlFailed) {
+              const urls = fs.readFileSync('/tmp/failed_urls.txt', 'utf8').trim();
+              lines.push(`### Unreachable image URLs`);
+              lines.push('```');
+              lines.push(urls);
+              lines.push('```');
+              lines.push('');
+              lines.push('These URLs may need updating in `vars.yml` (new Fedora release or image respin).');
+              lines.push('');
+            }
+
+            if (lintFailed) {
+              lines.push(`### ansible-lint failed`);
+              lines.push(`Check the workflow run for details.`);
+            }
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['fedora-image-check'],
+              state: 'open',
+            });
+
+            if (issues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues[0].number,
+                body: lines.join('\n'),
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Fedora image check failed`,
+                body: lines.join('\n'),
+                labels: ['fedora-image-check'],
+              });
+            }

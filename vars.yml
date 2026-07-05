@@ -1,0 +1,54 @@
+---
+# ==============================================================================
+# Fedora VM Builder Variables
+# Customize the values in this file before running the playbooks.
+# Sections marked [CHANGE] contain values that typically need to be updated.
+# ==============================================================================
+
+# Environment Prefix — used as a name prefix for all libvirt resources
+# [CHANGE] vm_prefix — change this to avoid collisions with other VMs
+vm_prefix: "fedora01"
+
+# Host Paths — all generated files are placed under vm_base_dir
+# [CHANGE] vm_base_dir — base directory for all generated files (pool, tofu state)
+vm_base_dir: "{{ lookup('env', 'HOME') }}/vm-lab"
+vm_pool_dir: "{{ vm_base_dir }}/pool"
+vm_tf_dir: "{{ vm_base_dir }}/work"
+
+# Fedora Cloud Image — uncomment ONE line for the desired version
+# [CHANGE] vm_os_image — Fedora Cloud Base Generic qcow2 URL
+#
+# Fedora 44 (kernel 6.15+)
+vm_os_image: "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
+# Fedora 43 (kernel 6.13+)
+# vm_os_image: "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2"
+# Fedora 42 (kernel 6.14+)
+# vm_os_image: "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-42-1.1.x86_64.qcow2"
+# Fedora 41 (kernel 6.11+)
+# vm_os_image: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-41-1.4.x86_64.qcow2"
+# Fedora 40 (kernel 6.8+)
+# vm_os_image: "https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2"
+# Fedora 39 (kernel 6.5+, EOL)
+# vm_os_image: "https://download.fedoraproject.org/pub/fedora/linux/releases/39/Cloud/x86_64/images/Fedora-Cloud-Base-39-1.5.x86_64.qcow2"
+# Fedora 38 (kernel 6.2+, EOL)
+# vm_os_image: "https://download.fedoraproject.org/pub/fedora/linux/releases/38/Cloud/x86_64/images/Fedora-Cloud-Base-38-1.6.x86_64.qcow2"
+
+# VM Configuration
+# [CHANGE] vm_password — default is "fedora"; set via cloud-init
+vm_vcpu: 2
+vm_memory: 4                  # GB (multiplied by 1024 in template)
+vm_disk_size: 20              # GB (multiplied by 1024^3 in template)
+vm_user: "fedora"
+vm_password: "fedora"
+
+# Network
+vm_network_subnet: "192.168.200.0/24"
+vm_network_bridge: "fvmbr0"
+vm_mac: "52:54:00:fe:da:01"
+
+# kdump — crashkernel=256M causes OOM on the crash kernel; 512M is the safe minimum
+vm_crashkernel: "512M"
+vm_kdump_enabled: true
+
+# debuginfo — set to false for faster builds when vmlinux is not needed
+vm_install_debuginfo: true
