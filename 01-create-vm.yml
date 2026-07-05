@@ -187,8 +187,10 @@
           Kernel: {{ kernel_version.stdout }}
           kdump: {{ 'operational' if (vm_kdump_enabled | bool) else 'disabled' }}
           crashkernel: {{ vm_crashkernel if (vm_kdump_enabled | bool) else 'n/a' }}
-          vmlinux: {{ '/usr/lib/debug/lib/modules/' + kernel_version.stdout + '/vmlinux' if (vm_install_debuginfo | bool and vmlinux_stat.stat.exists) else 'not installed' }}
+          vmlinux: {{ vmlinux_path if (vm_install_debuginfo | bool and vmlinux_stat.stat.exists) else 'not installed' }}
           ===
           To capture a vmcore:
             echo c | sudo tee /proc/sysrq-trigger
           vmcore will be at: /var/crash/<timestamp>/vmcore
+      vars:
+        vmlinux_path: "/usr/lib/debug/lib/modules/{{ kernel_version.stdout }}/vmlinux"
