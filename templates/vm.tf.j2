@@ -21,6 +21,9 @@ resource "libvirt_cloudinit_disk" "{{ vm_prefix }}_vm0_cloudinit" {
 
     packages:
       - kexec-tools
+{% if vm_kdump_enabled | bool %}
+      - kdump-utils
+{% endif %}
 {% if vm_install_debuginfo | bool %}
       - dnf-plugins-core
 {% endif %}

@@ -151,7 +151,7 @@
       become: true
       register: kdump_status
       changed_when: false
-      failed_when: "'Kdump is operational' not in kdump_status.stdout"
+      failed_when: "'Kdump is operational' not in kdump_status.stdout and 'Kdump is operational' not in kdump_status.stderr"
       when: vm_kdump_enabled | bool
 
     - name: Check crashkernel reservation
