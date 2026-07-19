@@ -125,16 +125,38 @@
       ansible.builtin.wait_for_connection:
         timeout: 300
 
+    - name: Record boot id before the cloud-init reboot
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/random/boot_id
+      register: boot_id_before
+      when: vm_kdump_enabled | bool
+
     - name: Wait for cloud-init phase 1 (packages + runcmd before reboot)
       ansible.builtin.wait_for:
         path: /var/lib/cloud/instance/boot-finished-phase1
         timeout: 900
+      # The final phase-1 runcmd reboots the VM the instant this marker
+      # appears, so this poll can lose its SSH connection mid-wait. That
+      # disconnect is expected here; the reboot wait below rides it out.
+      ignore_unreachable: true
       when: vm_kdump_enabled | bool
 
     - name: Wait for cloud-init reboot to complete
       ansible.builtin.wait_for_connection:
         delay: 30
         timeout: 600
+      when: vm_kdump_enabled | bool
+
+    - name: Confirm the reboot actually happened (boot id changed)
+      ansible.builtin.slurp:
+        src: /proc/sys/kernel/random/boot_id
+      register: boot_id_after
+      retries: 30
+      delay: 10
+      until:
+        - boot_id_after.content is defined
+        - (boot_id_after.content | b64decode | trim) != (boot_id_before.content | b64decode | trim)
+      ignore_unreachable: true
       when: vm_kdump_enabled | bool
 
     - name: Wait for cloud-init to fully finish

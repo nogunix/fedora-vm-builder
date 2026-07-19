@@ -1,5 +1,10 @@
 # fedora-vm-builder
 
+[![Lint](https://github.com/nogunix/fedora-vm-builder/actions/workflows/lint.yml/badge.svg)](https://github.com/nogunix/fedora-vm-builder/actions/workflows/lint.yml)
+[![Test](https://github.com/nogunix/fedora-vm-builder/actions/workflows/test.yml/badge.svg)](https://github.com/nogunix/fedora-vm-builder/actions/workflows/test.yml)
+[![Fedora Image Check](https://github.com/nogunix/fedora-vm-builder/actions/workflows/fedora-image-check.yml/badge.svg)](https://github.com/nogunix/fedora-vm-builder/actions/workflows/fedora-image-check.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Ansible + OpenTofu builder for disposable Fedora VMs with kdump and kernel debuginfo pre-configured. Uses libvirt/KVM.
 
 ## Prerequisites
