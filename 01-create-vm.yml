@@ -186,7 +186,7 @@
     - name: Verify crashkernel is in cmdline
       ansible.builtin.assert:
         that:
-          - "'crashkernel={{ vm_crashkernel }}' in cmdline.stdout"
+          - ('crashkernel=' ~ vm_crashkernel) in cmdline.stdout
         fail_msg: "crashkernel={{ vm_crashkernel }} not found in /proc/cmdline"
       when: vm_kdump_enabled | bool
 
