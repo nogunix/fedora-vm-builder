@@ -5,13 +5,13 @@
 [![Fedora Image Check](https://github.com/nogunix/fedora-vm-builder/actions/workflows/fedora-image-check.yml/badge.svg)](https://github.com/nogunix/fedora-vm-builder/actions/workflows/fedora-image-check.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Ansible + OpenTofu builder for disposable Fedora VMs with kdump and kernel debuginfo pre-configured. Uses libvirt/KVM.
+Ansible + Terraform builder for disposable Fedora VMs with kdump and kernel debuginfo pre-configured. Uses libvirt/KVM.
 
 ## Prerequisites
 
 - Linux host with libvirt/KVM (Fedora, RHEL, or CentOS Stream)
 - Ansible (`pip install ansible`)
-- OpenTofu (`tofu` in PATH)
+- Terraform >= 1.6 (`terraform` in PATH)
 - `sshpass` (for password-based SSH to the VM)
 
 ## Quick Start
@@ -51,6 +51,30 @@ Edit `vars.yml` before running. Key settings:
 | `vm_crashkernel` | `512M` | crashkernel reservation |
 | `vm_install_debuginfo` | `true` | Install kernel debuginfo at build time |
 
+`vars.yml` is the only file you need to touch. Ansible converts it into
+`terraform.tfvars.json` (via the mapping in `tfvars.yml`) and hands it to the
+Terraform project in `terraform/`.
+
+## Layout
+
+```
+01-create-vm.yml     Create the VM and verify kdump is operational
+99-destroy-all.yml   Tear everything down
+vars.yml             User-facing settings
+tfvars.yml           vars.yml -> Terraform input variable mapping
+terraform/           Static Terraform project (no templating)
+  versions.tf          Terraform + provider version constraints
+  variables.tf         Typed, validated input variables
+  main.tf              Storage pool + NAT network
+  vm.tf                cloud-init disk, volumes, domain
+  outputs.tf           vm_ip, vm_name, pool/network names
+  templates/           cloud-init and network-config templates
+```
+
+The playbooks copy `terraform/` into `vm_tf_dir` (`~/vm-lab/work` by default)
+and run Terraform there, so state and downloaded providers stay out of the repo
+and `99-destroy-all.yml` can remove the whole lab directory.
+
 ## What Gets Built
 
 - libvirt storage pool (`vm_prefix`)
@@ -60,6 +84,13 @@ Edit `vars.yml` before running. Key settings:
   - kdump enabled with `crashkernel=512M`
   - `kernel-debuginfo` installed (vmlinux available)
   - Serial console + VNC
+
+## Provider version
+
+The libvirt provider is pinned to `~> 0.8.3`. The 0.9 line is a full schema
+rewrite in which `libvirt_domain` drops `cloudinit`, `wait_for_lease` and
+`base_volume_id` in favour of a raw libvirt-XML mapping; migrating is a separate
+piece of work.
 
 ## License
 

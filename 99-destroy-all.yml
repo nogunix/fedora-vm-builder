@@ -11,14 +11,14 @@
         path: "{{ vm_tf_dir }}"
       register: tf_dir_stat
 
-    - name: OpenTofu destroy (remove VM, network, pool)
-      ansible.builtin.command:
-        cmd: tofu destroy -auto-approve
-        chdir: "{{ vm_tf_dir }}"
+    - name: Terraform destroy (remove VM, network, pool)
+      cloud.terraform.terraform:
+        project_path: "{{ vm_tf_dir }}"
+        state: absent
+        force_init: true
       when: tf_dir_stat.stat.exists
-      register: tf_destroy
+      register: terraform_destroy
       failed_when: false
-      changed_when: tf_destroy.rc == 0 and 'Destroy complete!' in tf_destroy.stdout
 
     - name: Stop VM domain if running
       ansible.builtin.command:
@@ -26,31 +26,31 @@
       failed_when: false
       changed_when: false
 
-    - name: Undefine VM domain from libvirt if not tracked by tofu
+    - name: Undefine VM domain from libvirt if not tracked by Terraform
       ansible.builtin.command:
         cmd: virsh -c qemu:///system undefine --nvram {{ vm_prefix }}_vm0
       failed_when: false
       changed_when: false
 
-    - name: Destroy network from libvirt if not tracked by tofu
+    - name: Destroy network from libvirt if not tracked by Terraform
       ansible.builtin.command:
         cmd: virsh -c qemu:///system net-destroy {{ vm_prefix }}_network
       failed_when: false
       changed_when: false
 
-    - name: Undefine network from libvirt if not tracked by tofu
+    - name: Undefine network from libvirt if not tracked by Terraform
       ansible.builtin.command:
         cmd: virsh -c qemu:///system net-undefine {{ vm_prefix }}_network
       failed_when: false
       changed_when: false
 
-    - name: Destroy storage pool from libvirt if not tracked by tofu
+    - name: Destroy storage pool from libvirt if not tracked by Terraform
       ansible.builtin.command:
         cmd: virsh -c qemu:///system pool-destroy {{ vm_prefix }}
       failed_when: false
       changed_when: false
 
-    - name: Undefine storage pool from libvirt if not tracked by tofu
+    - name: Undefine storage pool from libvirt if not tracked by Terraform
       ansible.builtin.command:
         cmd: virsh -c qemu:///system pool-undefine {{ vm_prefix }}
       failed_when: false
