@@ -8,11 +8,11 @@ users:
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
     shell: /bin/bash
     groups: wheel
-
-chpasswd:
-  list: |
-    ${vm_user}:${vm_password}
-  expire: false
+    # cloud-init locks the password by default; unlock it so the console and
+    # sshpass login in the create playbook both work. `chpasswd.list` would
+    # also set this, but it is deprecated as of cloud-init 22.2.
+    lock_passwd: false
+    plain_text_passwd: ${vm_password}
 
 packages:
   - kexec-tools
