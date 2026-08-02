@@ -1,0 +1,40 @@
+#cloud-config
+fqdn: ${hostname}
+ssh_pwauth: true
+disable_root: true
+
+users:
+  - name: ${vm_user}
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    shell: /bin/bash
+    groups: wheel
+
+chpasswd:
+  list: |
+    ${vm_user}:${vm_password}
+  expire: false
+
+packages:
+  - kexec-tools
+%{~ if vm_kdump_enabled }
+  - kdump-utils
+%{~ endif }
+%{~ if vm_install_debuginfo }
+  - dnf-plugins-core
+%{~ endif }
+
+runcmd:
+%{~ if vm_kdump_enabled }
+  - ['grubby', '--update-kernel=ALL', '--args=crashkernel=${vm_crashkernel}']
+  - ['systemctl', 'enable', 'kdump']
+%{~ endif }
+%{~ if vm_install_debuginfo }
+  - ['dnf', 'debuginfo-install', '-y', 'kernel-core']
+%{~ endif }
+  # Marker the create playbook waits on: everything above has run, and the
+  # reboot below (if any) is imminent.
+  - ['touch', '/var/lib/cloud/instance/boot-finished-phase1']
+%{~ if vm_kdump_enabled }
+  # Reboot to activate the crashkernel reservation grubby just added.
+  - ['reboot']
+%{~ endif }

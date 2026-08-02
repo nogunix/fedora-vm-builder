@@ -1,3 +1,5 @@
 ---
 collections:
   - name: ansible.posix
+  - name: cloud.terraform
+    version: ">=4.0.0"

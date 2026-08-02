@@ -1,29 +1,25 @@
 ---
-- name: Render templates for CI validation
+# Renders the Terraform input variables from vars.yml so CI can feed them to
+# `terraform console` and exercise every validation rule in variables.tf
+# without needing a libvirt host.
+- name: Render Terraform variables for CI validation
   hosts: localhost
   connection: local
   gather_facts: false
   vars_files:
     - vars.yml
+    - tfvars.yml
   vars:
-    vm_base_dir: /tmp/vm-rendered
-    vm_pool_dir: /tmp/vm-rendered/pool
-    vm_tf_dir: /tmp/vm-rendered
+    render_dir: /tmp/vm-tfvars
   tasks:
     - name: Create output directory
       ansible.builtin.file:
-        path: /tmp/vm-rendered
+        path: "{{ render_dir }}"
         state: directory
-        mode: "0755"
+        mode: '0755'
 
-    - name: Render infra.tf
-      ansible.builtin.template:
-        src: templates/infra.tf.j2
-        dest: /tmp/vm-rendered/infra.tf
-        mode: "0644"
-
-    - name: Render vm.tf
-      ansible.builtin.template:
-        src: templates/vm.tf.j2
-        dest: /tmp/vm-rendered/{{ vm_prefix }}_vm0.tf
-        mode: "0644"
+    - name: Render terraform.tfvars.json
+      ansible.builtin.copy:
+        content: "{{ terraform_tfvars | to_nice_json }}\n"
+        dest: "{{ render_dir }}/terraform.tfvars.json"
+        mode: '0644'

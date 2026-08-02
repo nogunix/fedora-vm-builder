@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repo Does
 
-Automates deployment of **disposable Fedora VMs** on a Linux host (Fedora/RHEL/CentOS Stream) using Ansible + OpenTofu + libvirt/KVM. A single VM is provisioned with kdump pre-enabled and kernel debuginfo pre-installed, ready for vmcore capture immediately after boot.
+Automates deployment of **disposable Fedora VMs** on a Linux host (Fedora/RHEL/CentOS Stream) using Ansible + Terraform + libvirt/KVM. A single VM is provisioned with kdump pre-enabled and kernel debuginfo pre-installed, ready for vmcore capture immediately after boot.
 
 Designed for kernel crash forensics and debugging, but usable standalone.
 
 ## Running the Playbooks
 
 ```bash
-# Install Ansible collection dependency first
+# Install Ansible collection dependencies first (ansible.posix, cloud.terraform)
 ansible-galaxy collection install -r requirements.yml
 
 # Create a Fedora VM with kdump + debuginfo (~15-30 min, depends on download speed)
@@ -36,20 +36,29 @@ Reproduce the full CI suite locally before pushing (mirrors `lint.yml` + `test.y
 ansible-lint
 
 # 2. Syntax-check all playbooks
-ansible-playbook --syntax-check -i test/inventory 01-create-vm.yml 99-destroy-all.yml
+ansible-playbook --syntax-check -i test/inventory 01-create-vm.yml 99-destroy-all.yml test-render.yml
 
-# 3. Render templates with default vars, then validate the generated .tf
-ansible-playbook test-render.yml
-cd /tmp/vm-rendered && tofu init -backend=false && tofu validate
+# 3. Terraform format + validate (static HCL, no rendering step)
+cd terraform
+terraform fmt -check -recursive
+terraform init -backend=false
+terraform validate
+
+# 4. Check vars.yml still satisfies every validation rule in variables.tf
+cd .. && ansible-playbook test-render.yml
+cd terraform && terraform console -var-file=/tmp/vm-tfvars/terraform.tfvars.json <<< 'var.vm_prefix'
+#    -> any "Error:" in the output means vars.yml violates a validation rule
 ```
+
+If a real libvirt host is available, `terraform plan -var-file=...` in `terraform/`
+is the strongest static check — it resolves the whole graph against the provider.
 
 ## CI
 
 - **Lint** (`.github/workflows/lint.yml`): runs `ansible-lint` on every push/PR to `main`
 - **Test** (`.github/workflows/test.yml`): runs on every push/PR to `main`
-  - **Syntax check**: `ansible-playbook --syntax-check` on both playbooks, across 4 distros (Fedora 43/44, Ubuntu 24.04, CentOS Stream 10)
-  - **Template render + tofu validate**: renders all Jinja2 templates with default vars and runs `tofu validate` on the generated `.tf` files
-  - Test playbook is `test-render.yml` (repo root); minimal inventory for syntax check is `test/inventory`
+  - **Syntax check**: `ansible-playbook --syntax-check` on all three playbooks, across 4 distros (Fedora 43/44, Ubuntu 24.04, CentOS Stream 10)
+  - **Terraform**: `terraform fmt -check`, `init -backend=false`, `validate`; then renders `vars.yml` through `test-render.yml` and evaluates it with `terraform console` so `variables.tf` validation rules run; then renders the cloud-init template in all four kdump/debuginfo combinations and parses each as YAML
 - **Fedora image check** (`.github/workflows/fedora-image-check.yml`): runs weekly (Monday 00:00 UTC), HEAD-checks all Fedora Cloud image URLs in `vars.yml`, re-runs `ansible-lint`, and opens a GitHub issue (or adds a comment to an existing one) if any URL is unreachable or lint fails
 
 ## Architecture
@@ -58,30 +67,50 @@ cd /tmp/vm-rendered && tofu init -backend=false && tofu validate
 
 | Playbook | What it does |
 |---|---|
-| `01-create-vm.yml` | SELinux prep, renders OpenTofu templates, `tofu apply` to create pool/network/VM, waits for cloud-init (kdump + debuginfo), verifies kdump operational |
-| `99-destroy-all.yml` | `tofu destroy`, manual `virsh` fallbacks, removes `vm_base_dir` |
+| `01-create-vm.yml` | SELinux prep, stages the Terraform project, writes `terraform.tfvars.json`, applies via `cloud.terraform.terraform`, waits for cloud-init (kdump + debuginfo), verifies kdump operational |
+| `99-destroy-all.yml` | `cloud.terraform.terraform` with `state: absent`, manual `virsh` fallbacks, removes `vm_base_dir` |
+| `test-render.yml` | CI/local helper: renders `terraform.tfvars.json` from `vars.yml` into `/tmp/vm-tfvars` |
 
-### Template rendering flow
+### Terraform project
 
-- `infra.tf.j2` -> `infra.tf` -- libvirt pool + NAT network (DHCP enabled)
-- `vm.tf.j2` -> `{{ vm_prefix }}_vm0.tf` -- cloud-init disk + base volume + overlay + domain
+`terraform/` is **static HCL** — nothing in it is Jinja2-templated. Configuration
+flows in as Terraform input variables:
+
+```
+vars.yml  --(tfvars.yml mapping)-->  terraform.tfvars.json  -->  terraform/
+```
+
+`01-create-vm.yml` copies `terraform/` into `vm_tf_dir` (default `~/vm-lab/work`)
+file-by-file from an explicit list, so state and the downloaded provider stay out
+of the repo. **Adding a new file under `terraform/` means adding it to that
+loop** in the "Stage the Terraform project" task.
+
+`terraform/.terraform.lock.hcl` is committed and locked for linux_amd64,
+linux_arm64 and darwin_arm64.
 
 ### Cloud-init sequence
 
+Generated by `templatefile()` from `terraform/templates/cloud-init.yaml.tftpl`:
+
 1. Create user with sudo NOPASSWD
-2. Install `kexec-tools` (and `dnf-plugins-core` if debuginfo enabled)
+2. Install `kexec-tools` (+ `kdump-utils` if kdump enabled, `dnf-plugins-core` if debuginfo enabled)
 3. `grubby --update-kernel=ALL --args=crashkernel=512M`
 4. `systemctl enable kdump`
 5. `dnf debuginfo-install -y kernel-core` (if enabled; can be slow)
-6. Reboot (to apply crashkernel reservation)
-7. After reboot: kdump starts with reserved memory, VM is ready
+6. `touch /var/lib/cloud/instance/boot-finished-phase1` (the marker the playbook waits on)
+7. Reboot (to apply crashkernel reservation)
+8. After reboot: kdump starts with reserved memory, VM is ready
 
 ### Key design decisions
 
-- **Single playbook, single VM**: no bastion, no multi-VM orchestration. One `tofu apply` creates everything.
+- **Single playbook, single VM**: no bastion, no multi-VM orchestration. One apply creates everything.
+- **Static HCL + tfvars, not templated HCL**: the Terraform project is directly `fmt`/`validate`/`plan`-able without an Ansible render step, and variable types and constraints are enforced by Terraform itself.
+- **`cloud.terraform.terraform` module, not `shell: terraform apply`**: gives structured `outputs`, real change detection, and `state: absent` for teardown.
+- **VM IP comes from a Terraform output**, not `virsh domifaddr` + regex. The domain NIC sets `wait_for_lease = true`, so the apply blocks until the lease exists.
+- **libvirt provider pinned to `~> 0.8.3`**: 0.9.x is a full schema rewrite (`libvirt_domain` loses `cloudinit`, `wait_for_lease`, `base_volume_id`). Migrating is separate work.
 - **crashkernel=512M**: 256M causes OOM on the crash kernel (learned from real incidents).
 - **debuginfo at build time**: avoids the repeated "download debuginfo after the fact" failures seen in ad-hoc VM builds.
-- **Belt-and-suspenders teardown**: `tofu destroy` followed by raw `virsh` fallbacks, all with `failed_when: false`.
+- **Belt-and-suspenders teardown**: Terraform destroy followed by raw `virsh` fallbacks, all with `failed_when: false`.
 - **Pool per prefix**: each `vm_prefix` gets its own libvirt storage pool (not the system `default`), avoiding collisions with other libvirt users.
 
 ## Configuration
@@ -89,8 +118,12 @@ cd /tmp/vm-rendered && tofu init -backend=false && tofu validate
 All tunable parameters are in `vars.yml`. Fields marked `[CHANGE]` should be reviewed:
 
 - `vm_prefix` -- name prefix for all libvirt resources (change to avoid collisions)
-- `vm_base_dir` -- where OpenTofu state and pool land on the host (default: `~/vm-lab`)
+- `vm_base_dir` -- where Terraform state and pool land on the host (default: `~/vm-lab`)
 - `vm_os_image` -- Fedora Cloud Base Generic qcow2 URL
 - `vm_password` -- cloud-init password (default: `fedora`; disposable lab only)
 - `vm_crashkernel` -- crashkernel reservation size (default: `512M`)
 - `vm_install_debuginfo` -- set to `false` for faster builds when vmlinux is not needed
+
+`tfvars.yml` maps these onto the Terraform input variables in
+`terraform/variables.tf`; it only needs editing when a Terraform variable is
+added or removed.

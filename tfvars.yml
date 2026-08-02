@@ -1,0 +1,26 @@
+---
+# ==============================================================================
+# Mapping from the user-facing settings in vars.yml to the Terraform input
+# variables declared in terraform/variables.tf.
+#
+# This is internal plumbing — edit vars.yml to configure a VM. Only touch this
+# file when terraform/variables.tf gains or loses a variable.
+#
+# It is shared by 01-create-vm.yml (which writes the real terraform.tfvars.json)
+# and test-render.yml (which renders it in CI so drift is caught there first).
+# ==============================================================================
+terraform_tfvars:
+  vm_prefix: "{{ vm_prefix }}"
+  vm_pool_dir: "{{ vm_pool_dir }}"
+  vm_os_image: "{{ vm_os_image }}"
+  vm_vcpu: "{{ vm_vcpu | int }}"
+  vm_memory: "{{ vm_memory | int }}"
+  vm_disk_size: "{{ vm_disk_size | int }}"
+  vm_user: "{{ vm_user }}"
+  vm_password: "{{ vm_password }}"
+  vm_network_subnet: "{{ vm_network_subnet }}"
+  vm_network_bridge: "{{ vm_network_bridge }}"
+  vm_mac: "{{ vm_mac }}"
+  vm_kdump_enabled: "{{ vm_kdump_enabled | bool }}"
+  vm_crashkernel: "{{ vm_crashkernel }}"
+  vm_install_debuginfo: "{{ vm_install_debuginfo | bool }}"

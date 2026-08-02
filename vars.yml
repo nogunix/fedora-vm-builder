@@ -10,7 +10,7 @@
 vm_prefix: "fedora01"
 
 # Host Paths — all generated files are placed under vm_base_dir
-# [CHANGE] vm_base_dir — base directory for all generated files (pool, tofu state)
+# [CHANGE] vm_base_dir — base directory for all generated files (pool, Terraform state)
 vm_base_dir: "{{ lookup('env', 'HOME') }}/vm-lab"
 vm_pool_dir: "{{ vm_base_dir }}/pool"
 vm_tf_dir: "{{ vm_base_dir }}/work"

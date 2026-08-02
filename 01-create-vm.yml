@@ -52,36 +52,53 @@
   gather_facts: false
   vars_files:
     - vars.yml
+    - tfvars.yml
 
   tasks:
-    - name: Generate OpenTofu manifests
-      ansible.builtin.template:
-        src: "templates/{{ item.src }}"
-        dest: "{{ vm_tf_dir }}/{{ item.dest }}"
+    - name: Ensure the Terraform template directory exists in the work directory
+      ansible.builtin.file:
+        path: "{{ vm_tf_dir }}/templates"
+        state: directory
+        mode: '0755'
+
+    # The Terraform project is static HCL driven by terraform.tfvars.json, so it
+    # is copied verbatim rather than rendered. Add any new project file here.
+    - name: Stage the Terraform project into the work directory
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/terraform/{{ item }}"
+        dest: "{{ vm_tf_dir }}/{{ item }}"
         mode: '0644'
       loop:
-        - {src: infra.tf.j2, dest: "infra.tf"}
-        - {src: vm.tf.j2, dest: "{{ vm_prefix }}_vm0.tf"}
+        - versions.tf
+        - variables.tf
+        - main.tf
+        - vm.tf
+        - outputs.tf
+        - .terraform.lock.hcl
+        - templates/cloud-init.yaml.tftpl
+        - templates/network-config.yaml.tftpl
 
-    - name: OpenTofu init + apply (pool, network, VM)
-      ansible.builtin.shell: tofu init && tofu apply -auto-approve
-      args:
-        chdir: "{{ vm_tf_dir }}"
-      register: tf_apply
-      changed_when: "'Apply complete!' in tf_apply.stdout"
+    # terraform_tfvars comes from tfvars.yml; no_log because it carries
+    # vm_password, which Terraform also treats as a sensitive input.
+    - name: Write Terraform variable definitions
+      ansible.builtin.copy:
+        content: "{{ terraform_tfvars | to_nice_json }}\n"
+        dest: "{{ vm_tf_dir }}/terraform.tfvars.json"
+        mode: '0600'
+      no_log: true
 
-    - name: Get VM IP from libvirt
-      ansible.builtin.command:
-        cmd: virsh -c qemu:///system domifaddr {{ vm_prefix }}_vm0
-      register: domifaddr_out
-      changed_when: false
-      retries: 15
-      delay: 10
-      until: "'ipv4' in domifaddr_out.stdout"
+    - name: Apply the Terraform configuration (pool, network, VM)
+      cloud.terraform.terraform:
+        project_path: "{{ vm_tf_dir }}"
+        state: present
+        force_init: true
+      register: terraform_apply
 
-    - name: Set VM IP fact
+    # The domain NIC sets wait_for_lease, so the apply only returns once the
+    # DHCP lease exists and this output is already populated.
+    - name: Record the VM address reported by Terraform
       ansible.builtin.set_fact:
-        vm_ip: "{{ domifaddr_out.stdout | regex_search('ipv4\\s+(\\S+)', '\\1') | first | split('/') | first }}"
+        vm_ip: "{{ terraform_apply.outputs.vm_ip.value }}"
 
     - name: Wait for VM SSH
       ansible.builtin.wait_for:
@@ -109,7 +126,7 @@
     - name: Display VM access info
       ansible.builtin.debug:
         msg: |
-          VM created: {{ vm_prefix }}_vm0
+          VM created: {{ terraform_apply.outputs.vm_name.value }}
           IP: {{ vm_ip }}
           Login: {{ vm_tf_dir }}/{{ vm_prefix }}_login.sh
           Or: sshpass -p {{ vm_password }} ssh {{ vm_user }}@{{ vm_ip }}
