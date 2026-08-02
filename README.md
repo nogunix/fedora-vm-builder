@@ -85,6 +85,20 @@ and `99-destroy-all.yml` can remove the whole lab directory.
   - `kernel-debuginfo` installed (vmlinux available)
   - Serial console + VNC
 
+## Coming from the OpenTofu version
+
+Earlier releases drove OpenTofu (`tofu`) instead of Terraform. If you have a lab
+left over from one, `vm_tf_dir` still holds OpenTofu state and a lock file
+pinned to `registry.opentofu.org`. You do not need to clean it up by hand — run
+
+```bash
+ansible-playbook 99-destroy-all.yml
+```
+
+first. The playbook re-initialises the directory before destroying, so Terraform
+takes over the existing state, and the `virsh` fallbacks catch anything it
+cannot. Then create a fresh VM as usual.
+
 ## Provider version
 
 The libvirt provider is pinned to `~> 0.8.3`. The 0.9 line is a full schema
