@@ -1,6 +1,6 @@
 ---
 # ==============================================================================
-# Mapping from the user-facing settings in vars.yml to the Terraform input
+# Mapping from the user-facing settings in vars.yml to the OpenTofu input
 # variables declared in terraform/variables.tf.
 #
 # This is internal plumbing — edit vars.yml to configure a VM. Only touch this

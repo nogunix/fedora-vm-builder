@@ -1,4 +1,4 @@
-# Terraform working files. The playbooks run Terraform in vm_tf_dir, but these
+# OpenTofu working files. The playbooks run OpenTofu in vm_tf_dir, but these
 # also appear here whenever terraform is run directly against terraform/.
 .terraform/
 *.tfstate

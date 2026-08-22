@@ -10,10 +10,15 @@
 vm_prefix: "fedora01"
 
 # Host Paths — all generated files are placed under vm_base_dir
-# [CHANGE] vm_base_dir — base directory for all generated files (pool, Terraform state)
+# [CHANGE] vm_base_dir — base directory for all generated files (pool, OpenTofu state)
 vm_base_dir: "{{ lookup('env', 'HOME') }}/vm-lab"
 vm_pool_dir: "{{ vm_base_dir }}/pool"
 vm_tf_dir: "{{ vm_base_dir }}/work"
+
+# IaC binary. cloud.terraform.terraform shells out to whatever this points
+# at; OpenTofu is CLI-compatible, so the module drives it unchanged. Set to
+# a terraform binary if you need to go back.
+vm_tf_binary: "tofu"
 
 # Fedora Cloud Image — uncomment ONE line for the desired version
 # [CHANGE] vm_os_image — Fedora Cloud Base Generic qcow2 URL

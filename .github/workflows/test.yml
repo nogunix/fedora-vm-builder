@@ -43,8 +43,8 @@ jobs:
             ansible-playbook --syntax-check -i test/inventory "$pb"
           done
 
-  terraform:
-    name: Terraform fmt + validate + template render
+  tofu:
+    name: OpenTofu fmt + validate + template render
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -52,19 +52,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v1
         with:
-          terraform_wrapper: false
+          tofu_wrapper: false
 
-      - name: terraform fmt
-        run: terraform fmt -check -recursive
+      - name: tofu fmt
+        run: tofu fmt -check -recursive
 
-      - name: terraform init
-        run: terraform init -backend=false -input=false
+      - name: tofu init
+        run: tofu init -backend=false -input=false
 
-      - name: terraform validate
-        run: terraform validate
+      - name: tofu validate
+        run: tofu validate
 
       - name: Install ansible-core
         run: pip install ansible-core
@@ -73,16 +73,16 @@ jobs:
         working-directory: .
         run: ansible-galaxy collection install -r requirements.yml
 
-      # Renders vars.yml through tfvars.yml, then makes Terraform evaluate every
+      # Renders vars.yml through tfvars.yml, then makes OpenTofu evaluate every
       # variable so the validation rules in variables.tf run against the shipped
-      # defaults. `terraform console` reports validation problems but still exits
+      # defaults. `tofu console` reports validation problems but still exits
       # 0, so the presence of "Error:" is what fails the step.
       - name: Check vars.yml against terraform/variables.tf
         working-directory: .
         run: |
           ansible-playbook test-render.yml
           cd terraform
-          terraform console -input=false \
+          tofu console -input=false \
             -var-file=/tmp/vm-tfvars/terraform.tfvars.json \
             <<< 'var.vm_prefix' > /tmp/console.out 2>&1
           cat /tmp/console.out
@@ -105,7 +105,7 @@ jobs:
               args="$args, vm_kdump_enabled=$kdump"
               args="$args, vm_install_debuginfo=$debuginfo"
               echo "templatefile(\"$tpl\", {$args})" \
-                | terraform console -input=false \
+                | tofu console -input=false \
                 | sed '1d;$d' \
                 | python3 -c 'import sys, yaml; yaml.safe_load(sys.stdin)' \
                 && echo "valid YAML"

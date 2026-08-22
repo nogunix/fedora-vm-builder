@@ -5,13 +5,13 @@
 [![Fedora Image Check](https://github.com/nogunix/fedora-vm-builder/actions/workflows/fedora-image-check.yml/badge.svg)](https://github.com/nogunix/fedora-vm-builder/actions/workflows/fedora-image-check.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Ansible + Terraform builder for disposable Fedora VMs with kdump and kernel debuginfo pre-configured. Uses libvirt/KVM.
+Ansible + OpenTofu builder for disposable Fedora VMs with kdump and kernel debuginfo pre-configured. Uses libvirt/KVM.
 
 ## Prerequisites
 
 - Linux host with libvirt/KVM (Fedora, RHEL, or CentOS Stream)
 - Ansible (`pip install ansible`)
-- Terraform >= 1.6 (`terraform` in PATH)
+- OpenTofu >= 1.6 (`tofu` in PATH)
 - `sshpass` (for password-based SSH to the VM)
 
 ## Quick Start
@@ -53,7 +53,7 @@ Edit `vars.yml` before running. Key settings:
 
 `vars.yml` is the only file you need to touch. Ansible converts it into
 `terraform.tfvars.json` (via the mapping in `tfvars.yml`) and hands it to the
-Terraform project in `terraform/`.
+OpenTofu project in `terraform/`.
 
 ## Layout
 
@@ -61,9 +61,9 @@ Terraform project in `terraform/`.
 01-create-vm.yml     Create the VM and verify kdump is operational
 99-destroy-all.yml   Tear everything down
 vars.yml             User-facing settings
-tfvars.yml           vars.yml -> Terraform input variable mapping
-terraform/           Static Terraform project (no templating)
-  versions.tf          Terraform + provider version constraints
+tfvars.yml           vars.yml -> OpenTofu input variable mapping
+terraform/           Static OpenTofu project (no templating)
+  versions.tf          OpenTofu + provider version constraints
   variables.tf         Typed, validated input variables
   main.tf              Storage pool + NAT network
   vm.tf                cloud-init disk, volumes, domain
@@ -72,7 +72,7 @@ terraform/           Static Terraform project (no templating)
 ```
 
 The playbooks copy `terraform/` into `vm_tf_dir` (`~/vm-lab/work` by default)
-and run Terraform there, so state and downloaded providers stay out of the repo
+and run OpenTofu there, so state and downloaded providers stay out of the repo
 and `99-destroy-all.yml` can remove the whole lab directory.
 
 ## What Gets Built
@@ -85,19 +85,27 @@ and `99-destroy-all.yml` can remove the whole lab directory.
   - `kernel-debuginfo` installed (vmlinux available)
   - Serial console + VNC
 
-## Coming from the OpenTofu version
+## Coming from the Terraform version
 
-Earlier releases drove OpenTofu (`tofu`) instead of Terraform. If you have a lab
-left over from one, `vm_tf_dir` still holds OpenTofu state and a lock file
-pinned to `registry.opentofu.org`. You do not need to clean it up by hand — run
+Some releases drove Terraform instead of OpenTofu. If you have a lab left over
+from one, `vm_tf_dir` still holds a lock file pinned to `registry.terraform.io`,
+which `tofu init` will not install. You do not need to clean it up by hand — run
 
 ```bash
 ansible-playbook 99-destroy-all.yml
 ```
 
-first. The playbook re-initialises the directory before destroying, so Terraform
+first. The playbook re-initialises the directory before destroying, so OpenTofu
 takes over the existing state, and the `virsh` fallbacks catch anything it
 cannot. Then create a fresh VM as usual.
+
+The `terraform/` directory name and `terraform.tfvars.json` are kept as-is:
+OpenTofu reads both natively, and renaming them would churn every path in the
+docs and CI for no functional gain. `versions.tf` likewise keeps its
+`terraform {}` block, which OpenTofu accepts.
+
+To go back to Terraform, set `vm_tf_binary: terraform` in `vars.yml` and
+regenerate the lock file — `cloud.terraform.terraform` drives either binary.
 
 ## Provider version
 

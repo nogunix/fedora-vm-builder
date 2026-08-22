@@ -1,8 +1,8 @@
 ---
-# Renders the Terraform input variables from vars.yml so CI can feed them to
-# `terraform console` and exercise every validation rule in variables.tf
+# Renders the OpenTofu input variables from vars.yml so CI can feed them to
+# `tofu console` and exercise every validation rule in variables.tf
 # without needing a libvirt host.
-- name: Render Terraform variables for CI validation
+- name: Render OpenTofu variables for CI validation
   hosts: localhost
   connection: local
   gather_facts: false

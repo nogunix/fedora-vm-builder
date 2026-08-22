@@ -55,7 +55,7 @@
     - tfvars.yml
 
   tasks:
-    - name: Ensure the Terraform template directory exists in the work directory
+    - name: Ensure the OpenTofu template directory exists in the work directory
       ansible.builtin.file:
         path: "{{ vm_tf_dir }}/templates"
         state: directory
@@ -63,7 +63,7 @@
 
     # The Terraform project is static HCL driven by terraform.tfvars.json, so it
     # is copied verbatim rather than rendered. Add any new project file here.
-    - name: Stage the Terraform project into the work directory
+    - name: Stage the OpenTofu project into the work directory
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/terraform/{{ item }}"
         dest: "{{ vm_tf_dir }}/{{ item }}"
@@ -79,26 +79,27 @@
         - templates/network-config.yaml.tftpl
 
     # terraform_tfvars comes from tfvars.yml; no_log because it carries
-    # vm_password, which Terraform also treats as a sensitive input.
-    - name: Write Terraform variable definitions
+    # vm_password, which OpenTofu also treats as a sensitive input.
+    - name: Write OpenTofu variable definitions
       ansible.builtin.copy:
         content: "{{ terraform_tfvars | to_nice_json }}\n"
         dest: "{{ vm_tf_dir }}/terraform.tfvars.json"
         mode: '0600'
       no_log: true
 
-    - name: Apply the Terraform configuration (pool, network, VM)
+    - name: Apply the OpenTofu configuration (pool, network, VM)
       cloud.terraform.terraform:
         project_path: "{{ vm_tf_dir }}"
+        binary_path: "{{ vm_tf_binary }}"
         state: present
         force_init: true
-      register: terraform_apply
+      register: tofu_apply
 
     # The domain NIC sets wait_for_lease, so the apply only returns once the
     # DHCP lease exists and this output is already populated.
-    - name: Record the VM address reported by Terraform
+    - name: Record the VM address reported by OpenTofu
       ansible.builtin.set_fact:
-        vm_ip: "{{ terraform_apply.outputs.vm_ip.value }}"
+        vm_ip: "{{ tofu_apply.outputs.vm_ip.value }}"
 
     - name: Wait for VM SSH
       ansible.builtin.wait_for:
@@ -126,7 +127,7 @@
     - name: Display VM access info
       ansible.builtin.debug:
         msg: |
-          VM created: {{ terraform_apply.outputs.vm_name.value }}
+          VM created: {{ tofu_apply.outputs.vm_name.value }}
           IP: {{ vm_ip }}
           Login: {{ vm_tf_dir }}/{{ vm_prefix }}_login.sh
           Or: sshpass -p {{ vm_password }} ssh {{ vm_user }}@{{ vm_ip }}
