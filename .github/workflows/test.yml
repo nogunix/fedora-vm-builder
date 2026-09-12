@@ -124,3 +124,31 @@ jobs:
           files: coverage.xml
           flags: ansible
           fail_ci_if_error: false
+
+  mock-run:
+    name: Mocked end-to-end run (01 + 99)
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:44
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: dnf install -y ansible-core git
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Run 01 and 99 against mocked tofu/virsh
+        run: ./test/mock-run.sh
+        env:
+          ANSIBLE_COVERAGE_OUTPUT: coverage.xml
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          flags: ansible
+          fail_ci_if_error: false

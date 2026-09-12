@@ -12,3 +12,10 @@ terraform.tfvars.json
 # Ansible
 *.retry
 .ansible/
+
+# Python
+__pycache__/
+*.pyc
+
+# Coverage
+coverage.xml

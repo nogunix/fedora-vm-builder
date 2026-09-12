@@ -1,0 +1,4 @@
+namespace: cloud
+name: terraform
+version: 99.0.0
+type: ansible

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Mock `tofu` for test/mock-run.sh. Handles the subcommands that both the
+# cloud.terraform.terraform module and direct playbook calls issue.
+set -u
+
+log() { echo "[mock-tofu] $*" >> "${MOCK_LOG:-/dev/null}"; }
+log "argv: $*"
+
+case "${1:-}" in
+  init)
+    echo 'Initializing the backend...'
+    echo 'OpenTofu has been successfully initialized!'
+    ;;
+  apply)
+    echo 'libvirt_pool.default: Creating...'
+    echo 'Apply complete! Resources: 4 added, 0 changed, 0 destroyed.'
+    ;;
+  destroy)
+    echo 'Destroy complete! Resources: 4 destroyed.'
+    ;;
+  plan)
+    # -detailed-exitcode: 2 = changes present
+    exit 2
+    ;;
+  output)
+    if echo "$*" | grep -q '\-json'; then
+      cat <<'JSON'
+{
+  "vm_ip": {"value": "127.0.0.1", "type": "string", "sensitive": false},
+  "vm_name": {"value": "fedora01_vm0", "type": "string", "sensitive": false}
+}
+JSON
+    else
+      echo -n "127.0.0.1"
+    fi
+    ;;
+  state)
+    echo "Invalid target \"${3:-}\"" >&2
+    exit 1
+    ;;
+  *)
+    echo "[mock-tofu] unhandled subcommand: ${1:-}" >&2
+    exit 64
+    ;;
+esac
