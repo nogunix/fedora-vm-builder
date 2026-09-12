@@ -1,0 +1,7 @@
+---
+# test/mock-collections holds a stub cloud.terraform collection used only by
+# test/mock-run.sh. It is deliberately not a publishable collection (no
+# changelog, license, runtime.yml), so the galaxy[*] and schema[galaxy] rules
+# do not apply to it.
+exclude_paths:
+  - test/mock-collections/
