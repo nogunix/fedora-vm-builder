@@ -3,9 +3,10 @@
 # Run 01-create-vm.yml and 99-destroy-all.yml end to end against mocked
 # external commands, purely to exercise task coverage.
 #
-# Play 3 of 01 targets vm_server (the newly created VM) and needs a live SSH
-# connection with cloud-init, kdump, and debuginfo, so it is skipped via
-# --limit localhost. Plays 1-2 and the full 99-destroy-all are exercised.
+# Play 3 of 01 targets vm_server (the newly created VM) over SSH.  We set up
+# sshd on localhost so the add_host inventory works.  kdump and debuginfo
+# conditionals are set to false because /proc/sys/kernel/random/boot_id cannot
+# change without a real reboot and /proc/cmdline is read-only.
 #
 # Destructive: 99 removes the base directory, so this refuses to run outside
 # a container or CI unless --force is given.
@@ -64,10 +65,38 @@ mkdir -p "$WORKDIR"/{work,pool}
 export MOCK_LOG="$WORKDIR/mock-commands.log"
 : > "$MOCK_LOG"
 
-# --- Port 22 listener --------------------------------------------------------
-# Play 2's "Wait for VM SSH" polls port 22 on the mock vm_ip (127.0.0.1).
-# Park a bare TCP listener so the wait_for succeeds without a real sshd.
-start_listener() {
+# --- SSH setup ---------------------------------------------------------------
+# Play 2 adds vm_server to the dynamic inventory at 127.0.0.1.  Play 3 then
+# SSHes into it. Set up sshd so the connection works end to end.
+VM_USER="fedora"
+VM_PASS="fedora"
+
+setup_sshd() {
+  command -v sshd >/dev/null 2>&1 || return 1
+  command -v ssh  >/dev/null 2>&1 || return 1
+  command -v sshpass >/dev/null 2>&1 || return 1
+  [ "$(id -u)" = "0" ] || return 1
+  ssh-keygen -A >/dev/null 2>&1 || return 1
+  id "$VM_USER" >/dev/null 2>&1 || useradd -m "$VM_USER"
+  echo "$VM_USER:$VM_PASS" | chpasswd
+  echo "$VM_USER ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/99-$VM_USER"
+  chmod 0440 "/etc/sudoers.d/99-$VM_USER"
+  mkdir -p /run/sshd /var/empty/sshd
+  /usr/sbin/sshd -o UsePAM=yes -o PasswordAuthentication=yes
+  for _ in $(seq 30); do
+    (exec 3<>/dev/tcp/127.0.0.1/22) 2>/dev/null && return 0
+    sleep 0.5
+  done
+  return 1
+}
+
+LIMIT_ARGS=()
+if setup_sshd; then
+  echo "==> sshd up — Play 3 (vm_server) will run"
+else
+  echo "==> no usable sshd; Play 3 skipped via --limit localhost"
+  LIMIT_ARGS=(--limit localhost)
+  # Play 2's "Wait for VM SSH" still needs port 22 to respond.
   python3 -c "
 import socket, sys
 s = socket.socket()
@@ -82,12 +111,6 @@ while True:
 " &
   echo $! > "$WORKDIR/listener.pid"
   sleep 1
-}
-
-if start_listener; then
-  echo "==> port-22 listener up"
-else
-  echo "==> could not bind port 22 (not root?); Wait for VM SSH will time out" >&2
 fi
 
 # shellcheck disable=SC2329
@@ -108,14 +131,14 @@ OVERRIDES=(
   -e "vm_base_dir=$WORKDIR"
   -e "vm_tf_dir=$WORKDIR/work"
   -e "vm_pool_dir=$WORKDIR/pool"
+  -e "vm_kdump_enabled=false"
+  -e "vm_install_debuginfo=false"
 )
 
 rc=0
 
-# Play 1 (SELinux) + Play 2 (infrastructure) — Play 3 targets vm_server and
-# needs a real SSH connection with cloud-init, so skip it via --limit.
-echo "==> 01-create-vm.yml (--limit localhost)"
-ansible-playbook -i "$REPO_ROOT/test/inventory" --limit localhost \
+echo "==> 01-create-vm.yml"
+ansible-playbook -i "$REPO_ROOT/test/inventory" "${LIMIT_ARGS[@]}" \
   "${OVERRIDES[@]}" "$REPO_ROOT/01-create-vm.yml" || { rc=1; echo "!! 01-create-vm.yml failed"; }
 
 echo "==> 99-destroy-all.yml"

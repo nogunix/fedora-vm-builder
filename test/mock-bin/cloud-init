@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Mock `cloud-init` for test/mock-run.sh. Play 3's "Wait for cloud-init to
+# fully finish" runs `cloud-init status --wait` and accepts rc 0 or 2.
+set -u
+echo "[mock-cloud-init] $*" >> "${MOCK_LOG:-/dev/null}"
+
+case "${1:-} ${2:-}" in
+  "status --wait")
+    echo 'status: done'
+    ;;
+  *)
+    echo "[mock-cloud-init] unhandled: $*" >&2
+    exit 64
+    ;;
+esac
