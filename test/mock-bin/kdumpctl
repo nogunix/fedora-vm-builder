@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Mock `kdumpctl` for test/mock-run.sh. Installed into /usr/local/bin on the
+# mock "VM" so Play 3's "Verify kdump is operational" (which sudo's) finds it:
+# /usr/local/bin is on both the login PATH and sudo's secure_path.
+set -u
+echo "[mock-kdumpctl] $*" >> "${MOCK_LOG:-/dev/null}"
+
+case "${1:-}" in
+  status)
+    echo "Kdump is operational"
+    ;;
+  *)
+    echo "[mock-kdumpctl] unhandled: $*" >&2
+    exit 64
+    ;;
+esac

@@ -14,9 +14,13 @@ DOCUMENTATION = """
     type: aggregate
     short_description: Generate Cobertura XML task-coverage report
     description:
-        - Records which Ansible tasks execute (file + line) and writes a
-          Cobertura XML report so Codecov (or any compatible tool) can
-          visualise playbook task coverage.
+        - Records which Ansible tasks actually execute (file + line) and
+          writes a Cobertura XML report so Codecov (or any compatible tool)
+          can visualise playbook task coverage.
+        - A task counts as covered only when it ran on at least one host.
+          Tasks skipped by a C(when) conditional, and tasks whose host was
+          unreachable, are reported as misses - Ansible announces those
+          tasks too, but running nothing proves nothing.
     requirements:
         - Enable via callbacks_enabled or ANSIBLE_CALLBACKS_ENABLED
     options:
@@ -43,11 +47,23 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_start(self, playbook):
         self._project_root = os.path.dirname(os.path.abspath(playbook._file_name))
 
-    def v2_playbook_on_task_start(self, task, is_conditional):
-        self._record(task)
+    # Only completed runs count. on_skipped/on_unreachable are deliberately
+    # not hooked, and neither is on_task_start: it fires for every task in
+    # the play, including the ones a conditional then skips.
+    def v2_runner_on_ok(self, result):
+        self._record(result._task)
 
-    def v2_playbook_on_handler_task_start(self, task):
-        self._record(task)
+    def v2_runner_on_failed(self, result, ignore_errors=False):
+        self._record(result._task)
+
+    def v2_runner_on_async_ok(self, result):
+        self._record(result._task)
+
+    def v2_runner_item_on_ok(self, result):
+        self._record(result._task)
+
+    def v2_runner_item_on_failed(self, result):
+        self._record(result._task)
 
     def _record(self, task):
         path_str = task.get_path()

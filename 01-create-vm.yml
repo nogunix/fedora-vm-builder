@@ -137,6 +137,14 @@
   gather_facts: false
   vars_files:
     - vars.yml
+  vars:
+    # The paths this play inspects inside the VM. They are variables only so
+    # the mocked CI run (test/mock-run.sh) can point them at fixtures: there
+    # is no real reboot there and /proc is read-only. A real run never
+    # overrides them.
+    vm_boot_id_path: /proc/sys/kernel/random/boot_id
+    vm_cloud_init_marker: /var/lib/cloud/instance/boot-finished-phase1
+    vm_cmdline_path: /proc/cmdline
 
   tasks:
     - name: Wait for SSH to become available
@@ -145,13 +153,13 @@
 
     - name: Record boot id before the cloud-init reboot
       ansible.builtin.slurp:
-        src: /proc/sys/kernel/random/boot_id
+        src: "{{ vm_boot_id_path }}"
       register: boot_id_before
       when: vm_kdump_enabled | bool
 
     - name: Wait for cloud-init phase 1 (packages + runcmd before reboot)
       ansible.builtin.wait_for:
-        path: /var/lib/cloud/instance/boot-finished-phase1
+        path: "{{ vm_cloud_init_marker }}"
         timeout: 900
       # The final phase-1 runcmd reboots the VM the instant this marker
       # appears, so this poll can lose its SSH connection mid-wait. That
@@ -167,7 +175,7 @@
 
     - name: Confirm the reboot actually happened (boot id changed)
       ansible.builtin.slurp:
-        src: /proc/sys/kernel/random/boot_id
+        src: "{{ vm_boot_id_path }}"
       register: boot_id_after
       retries: 30
       delay: 10
@@ -196,7 +204,7 @@
 
     - name: Check crashkernel reservation
       ansible.builtin.command:
-        cmd: cat /proc/cmdline
+        cmd: cat {{ vm_cmdline_path }}
       register: cmdline
       changed_when: false
       when: vm_kdump_enabled | bool
@@ -205,7 +213,7 @@
       ansible.builtin.assert:
         that:
           - ('crashkernel=' ~ vm_crashkernel) in cmdline.stdout
-        fail_msg: "crashkernel={{ vm_crashkernel }} not found in /proc/cmdline"
+        fail_msg: "crashkernel={{ vm_crashkernel }} not found in {{ vm_cmdline_path }}"
       when: vm_kdump_enabled | bool
 
     - name: Get kernel version

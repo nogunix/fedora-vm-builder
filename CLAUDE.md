@@ -53,6 +53,32 @@ cd terraform && tofu console -var-file=/tmp/vm-tfvars/terraform.tfvars.json <<< 
 If a real libvirt host is available, `tofu plan -var-file=...` in `terraform/`
 is the strongest static check — it resolves the whole graph against the provider.
 
+### Mocked end-to-end run (task coverage)
+
+`test/mock-run.sh` runs every playbook against mocked `tofu`/`virsh`/`semanage`/
+`restorecon`/`cloud-init`/`kdumpctl` binaries and a stub `cloud.terraform`
+collection, so no libvirt host is needed. It installs mocks under
+`/usr/local/bin` and lets `99-destroy-all.yml` delete its base directory, so it
+refuses to run outside a container or CI:
+
+```bash
+podman run --rm -v "$PWD":/repo:Z -w /repo fedora:44 bash -c '
+  dnf install -y ansible-core git openssh-server openssh-clients sshpass sudo python3-dnf &&
+  ansible-galaxy collection install -r requirements.yml &&
+  ./test/mock-run.sh'
+```
+
+It should end at **36/36 tasks covered**. `callback_plugins/coverage_reporter.py`
+counts a task only when it actually ran on a host — a task skipped by its `when`
+is a miss — so hitting every task takes more than one pass:
+
+- `01-create-vm.yml` runs twice, once with kdump/debuginfo off and once on
+- Play 1's SELinux branch needs `ansible_facts` injected (`-e`), because no CI
+  runner has SELinux enabled
+- Play 3's `vm_boot_id_path` / `vm_cloud_init_marker` / `vm_cmdline_path` are
+  pointed at fixtures; nothing reboots there and `/proc` is read-only. That is
+  the only reason those three paths are variables
+
 ### Checking cloud-init changes without a rebuild
 
 CI parses the rendered cloud-init as YAML, which catches syntax breakage but not
@@ -81,6 +107,7 @@ touching the credential path still needs a full `99-destroy-all.yml` +
 - **Test** (`.github/workflows/test.yml`): runs on every push/PR to `main`
   - **Syntax check**: `ansible-playbook --syntax-check` on all three playbooks, across 4 distros (Fedora 43/44, Ubuntu 24.04, CentOS Stream 10)
   - **OpenTofu**: `tofu fmt -check`, `init -backend=false`, `validate`; then renders `vars.yml` through `test-render.yml` and evaluates it with `tofu console` so `variables.tf` validation rules run; then renders the cloud-init template in all four kdump/debuginfo combinations and parses each as YAML
+  - **Mocked end-to-end run**: `test/mock-run.sh` in a Fedora 44 container (see above); both it and the OpenTofu job upload Cobertura task coverage to Codecov
 - **Fedora image check** (`.github/workflows/fedora-image-check.yml`): runs weekly (Monday 00:00 UTC), HEAD-checks all Fedora Cloud image URLs in `vars.yml`, re-runs `ansible-lint`, and opens a GitHub issue (or adds a comment to an existing one) if any URL is unreachable or lint fails
 
 ## Architecture
