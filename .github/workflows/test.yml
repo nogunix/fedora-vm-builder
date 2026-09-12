@@ -73,15 +73,19 @@ jobs:
         working-directory: .
         run: ansible-galaxy collection install -r requirements.yml
 
+      - name: Run test-render.yml with coverage
+        working-directory: .
+        run: ansible-playbook test-render.yml
+        env:
+          ANSIBLE_CALLBACKS_ENABLED: coverage_reporter
+          ANSIBLE_COVERAGE_OUTPUT: coverage.xml
+
       # Renders vars.yml through tfvars.yml, then makes OpenTofu evaluate every
       # variable so the validation rules in variables.tf run against the shipped
       # defaults. `tofu console` reports validation problems but still exits
       # 0, so the presence of "Error:" is what fails the step.
       - name: Check vars.yml against terraform/variables.tf
-        working-directory: .
         run: |
-          ansible-playbook test-render.yml
-          cd terraform
           tofu console -input=false \
             -var-file=/tmp/vm-tfvars/terraform.tfvars.json \
             <<< 'var.vm_prefix' > /tmp/console.out 2>&1
@@ -111,3 +115,12 @@ jobs:
                 && echo "valid YAML"
             done
           done
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          flags: ansible
+          fail_ci_if_error: false
