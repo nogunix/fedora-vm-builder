@@ -62,7 +62,7 @@ collection, so no libvirt host is needed. It installs mocks under
 refuses to run outside a container or CI:
 
 ```bash
-podman run --rm -v "$PWD":/repo:Z -w /repo fedora:44 bash -c '
+podman run --rm -v "$PWD":/repo:Z -w /repo fedora:45 bash -c '
   dnf install -y ansible-core git openssh-server openssh-clients sshpass sudo python3-dnf &&
   ansible-galaxy collection install -r requirements.yml &&
   ./test/mock-run.sh'
@@ -105,9 +105,9 @@ touching the credential path still needs a full `99-destroy-all.yml` +
 
 - **Lint** (`.github/workflows/lint.yml`): runs `ansible-lint` on every push/PR to `main`
 - **Test** (`.github/workflows/test.yml`): runs on every push/PR to `main`
-  - **Syntax check**: `ansible-playbook --syntax-check` on all three playbooks, across 4 distros (Fedora 43/44, Ubuntu 24.04, CentOS Stream 10)
+  - **Syntax check**: `ansible-playbook --syntax-check` on all three playbooks, across 5 distros (Fedora 43/44/45, Ubuntu 24.04, CentOS Stream 10)
   - **OpenTofu**: `tofu fmt -check`, `init -backend=false`, `validate`; then renders `vars.yml` through `test-render.yml` and evaluates it with `tofu console` so `variables.tf` validation rules run; then renders the cloud-init template in all four kdump/debuginfo combinations and parses each as YAML
-  - **Mocked end-to-end run**: `test/mock-run.sh` in a Fedora 44 container (see above); both it and the OpenTofu job upload Cobertura task coverage to Codecov
+  - **Mocked end-to-end run**: `test/mock-run.sh` in a Fedora 45 container (see above); both it and the OpenTofu job upload Cobertura task coverage to Codecov
 - **Fedora image check** (`.github/workflows/fedora-image-check.yml`): runs weekly (Monday 00:00 UTC), HEAD-checks all Fedora Cloud image URLs in `vars.yml`, re-runs `ansible-lint`, and opens a GitHub issue (or adds a comment to an existing one) if any URL is unreachable or lint fails
 
 ## Architecture

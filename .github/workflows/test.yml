@@ -20,6 +20,9 @@ jobs:
           - name: Fedora 44
             image: fedora:44
             install: dnf install -y ansible-core git
+          - name: Fedora 45
+            image: fedora:45
+            install: dnf install -y ansible-core git
           - name: Ubuntu 24.04
             image: ubuntu:24.04
             install: apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-core git
@@ -129,13 +132,13 @@ jobs:
     name: Mocked end-to-end run (01 + 99)
     runs-on: ubuntu-latest
     container:
-      image: fedora:44
+      image: fedora:45
     steps:
       - uses: actions/checkout@v7
 
       - name: Install dependencies
         # python3-dnf: the mocked run drives Play 1's SELinux branch, whose
-        # first task is ansible.builtin.dnf (Fedora 44 ships only dnf5 bindings).
+        # first task is ansible.builtin.dnf (Fedora 44+ ships only dnf5 bindings).
         run: |
           dnf install -y ansible-core git openssh-server openssh-clients \
             sshpass sudo python3-dnf
