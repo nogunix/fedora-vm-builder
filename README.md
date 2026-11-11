@@ -21,7 +21,7 @@ Ansible + OpenTofu builder for disposable Fedora VMs with kdump and kernel debug
 # Install Ansible dependencies
 ansible-galaxy collection install -r requirements.yml
 
-# Create a VM (default: Fedora 44, kdump enabled, debuginfo installed)
+# Create a VM (default: Fedora 45, kdump enabled, debuginfo installed)
 ansible-playbook 01-create-vm.yml
 
 # SSH into the VM
@@ -45,7 +45,7 @@ Edit `vars.yml` before running. Key settings:
 | Variable | Default | Description |
 |---|---|---|
 | `vm_prefix` | `fedora01` | Name prefix for libvirt resources |
-| `vm_os_image` | Fedora 44 Cloud Base | Fedora cloud image URL (38–44 selectable) |
+| `vm_os_image` | Fedora 45 Cloud Base | Fedora cloud image URL (38–45 selectable) |
 | `vm_vcpu` | `2` | vCPUs |
 | `vm_memory` | `4` | RAM in GB |
 | `vm_disk_size` | `20` | Disk in GB |

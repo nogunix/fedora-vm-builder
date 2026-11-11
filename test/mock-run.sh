@@ -67,7 +67,7 @@ test/mock-run.sh refuses to run here.
 binaries in /usr/local/bin, so this is meant for a throwaway container or a CI
 runner. Run it as:
 
-  podman run --rm -v "$PWD":/repo:Z -w /repo fedora:44 ./test/mock-run.sh
+  podman run --rm -v "$PWD":/repo:Z -w /repo fedora:45 ./test/mock-run.sh
 
 or pass --force if this host really is disposable.
 REFUSE
